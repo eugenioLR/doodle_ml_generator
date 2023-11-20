@@ -38,7 +38,7 @@ class DecoderDense(nn.Module):
         return x
 
 
-class DenseAE(nn.Module):
+class AE(nn.Module):
     def __init__(self, encoder, decoder):
         super().__init__()
         self.encoder = encoder
