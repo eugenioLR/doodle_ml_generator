@@ -7,8 +7,28 @@ import torchvision
 import numpy as np
 
 
-class EncoderDenseVAE(nn.Module):
-    def __init__(self, input_size, code_dims, device="cpu"):
+class EncoderVAE(nn.Module):
+    def __init__(self, input_size, code_dims, std_scale):
+        super().__init__()
+        self.input_size = input_size
+        self.code_dims = code_dims
+        self.std_scale = std_scale
+
+        # Sampling on GPU from https://avandekleut.github.io/vae/
+        self.normal = torch.distributions.Normal(0,std_scale)
+        self.normal.loc = self.normal.loc.to(device)
+        self.normal.scale = self.normal.scale.to(device)
+
+        self.kl_loss = 0
+
+    def _sample_codes(self, loc, scale):
+        self.kl_loss = 0.5*((scale/self.std_scale)**2 + loc**2 - (scale/self.std_scale).log() + self.code_dims).sum(dim=1)
+        self.kl_loss = self.kl_loss.mean()
+
+        return loc + scale * self.normal.sample(loc.shape)
+
+class EncoderDenseVAE(EncoderVAE):
+    def __init__(self, input_size, code_dims, std_scale=1, device="cpu"):
         super().__init__()
 
         self.layer1 = nn.Linear(input_size[0]*input_size[1], 400, device=device)
@@ -16,14 +36,9 @@ class EncoderDenseVAE(nn.Module):
         self.layer3 = nn.Linear(200, 100, device=device)
         self.layer4 = nn.Linear(100, code_dims, device=device)
         self.layer5 = nn.Linear(100, code_dims, device=device)
-        # Sampling on GPU from https://avandekleut.github.io/vae/
-        self.normal = torch.distributions.Normal(0,1)
-        self.normal.loc = self.normal.loc.to(device)
-        self.normal.scale = self.normal.scale.to(device)
+
         self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
-
-        self.kl_loss = 0
     
     def forward(self, x):
         x = torch.flatten(x, start_dim=1)
@@ -32,32 +47,10 @@ class EncoderDenseVAE(nn.Module):
         x = self.relu(self.layer3(x))
         x_loc = self.layer4(x)
         x_scale = torch.exp(self.layer5(x))
-        x = x_loc + x_scale * self.normal.sample(x_loc.shape)
-        self.kl_loss = (x_scale.exp()**2 + x_loc**2 - x_scale - 0.5).sum()
+
+        x = self._sample_codes(x_loc, x_scale)
 
         return x, x_loc, x_scale
-
-
-class DecoderDenseVAE(nn.Module):
-    def __init__(self, code_dims, output_size, device="cpu"):
-        super().__init__()
-        self.layer1 = nn.Linear(code_dims, 100, device=device)
-        self.layer2 = nn.Linear(100, 200, device=device)
-        self.layer3 = nn.Linear(200, 400, device=device)
-        self.layer4 = nn.Linear(400, output_size[0]*output_size[1], device=device)
-        self.output_size = output_size
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
-    
-    def forward(self, x):
-        x = self.relu(self.layer1(x))
-        x = self.relu(self.layer2(x))
-        x = self.relu(self.layer3(x))
-        x = self.sigmoid(self.layer4(x))
-
-        x = x.view(-1, *self.output_size)
-
-        return x
 
 
 class VAE(nn.Module):
