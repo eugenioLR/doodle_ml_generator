@@ -10,7 +10,10 @@ from torchvision.utils import make_grid , save_image
 
 
 class RBM(nn.Module):
-    def __init__(self, n_visible, n_hidden):
+    """
+    https://blog.paperspace.com/beginners-guide-to-boltzmann-machines-pytorch/
+    """
+    def __init__(self, n_visible, n_hidden, k=5):
         self.W = nn.Parameter(torch.randb(n_hidden, n_visible)*1e-2)
         self.v = nn.Parameter(torch.zeros(n_visible))
         self.h = nn.Parameter(torch.zeros(n_hidden))
@@ -26,12 +29,21 @@ class RBM(nn.Module):
         p_v = F.sigmoid(F.linear(x, self.W.t(), bias=self.v))
         return p_v, self.sample(p_v)
 
-    def forward(self, x):
-        _, x = self._visible_to_hidden(x)
-        return x
+    def forward(self, v):
+        for _ in range(self.k):
+            _, h = self.v_to_h(v)
+            _, v = self.h_to_v(h)
+        
+        return v
     
     def free_energy(self, x):
+        """
+        gradient = energy[real] - energy[reconstructed]
+        """
+
         wx_b = F.linear(x, self.W, self.h)
 
         hidden_term = torch.log(torch.exp(wx_b) + 1) + 1
-        return (-hidden_term - torch.mv(x, self.v)).mean()
+        visible_term = torch.mv(x, self.v)
+        return -(hidden_term + visible_term).mean()
+

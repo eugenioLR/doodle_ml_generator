@@ -1,4 +1,5 @@
 __pycache__
-data/*/*/*.png
+data/train_set
+data/test_set
 nohup.out
 venv/
